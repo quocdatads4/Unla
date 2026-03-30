@@ -1,0 +1,61 @@
+name: Redeploy Dokploy thủ công
+
+on:
+  workflow_dispatch:
+    inputs:
+      application_id:
+        description: "Application ID trên Dokploy, để trống để dùng secret DOKPLOY_APPLICATION_ID"
+        required: false
+        type: string
+
+jobs:
+  redeploy:
+    name: Gọi Dokploy redeploy
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Kiểm tra secrets và xác định application ID
+        shell: bash
+        env:
+          DOKPLOY_BASE_URL: ${{ secrets.DOKPLOY_BASE_URL }}
+          DOKPLOY_API_KEY: ${{ secrets.DOKPLOY_API_KEY }}
+          DOKPLOY_APPLICATION_ID: ${{ secrets.DOKPLOY_APPLICATION_ID }}
+          INPUT_APPLICATION_ID: ${{ github.event.inputs.application_id }}
+        run: |
+          missing=0
+          for name in DOKPLOY_BASE_URL DOKPLOY_API_KEY; do
+            if [[ -z "${!name}" ]]; then
+              echo "Thiếu secret bắt buộc: ${name}" >&2
+              missing=1
+            fi
+          done
+
+          APP_ID="${INPUT_APPLICATION_ID}"
+          if [[ -z "${APP_ID}" ]]; then
+            APP_ID="${DOKPLOY_APPLICATION_ID}"
+          fi
+
+          if [[ -z "${APP_ID}" ]]; then
+            echo "Thiếu application ID. Hãy nhập input application_id hoặc cấu hình secret DOKPLOY_APPLICATION_ID" >&2
+            missing=1
+          fi
+
+          if [[ "${missing}" -ne 0 ]]; then
+            exit 1
+          fi
+
+          echo "APP_ID=${APP_ID}" >> "${GITHUB_ENV}"
+
+      - name: Gọi Dokploy redeploy
+        shell: bash
+        env:
+          DOKPLOY_BASE_URL: ${{ secrets.DOKPLOY_BASE_URL }}
+          DOKPLOY_API_KEY: ${{ secrets.DOKPLOY_API_KEY }}
+          APP_ID: ${{ env.APP_ID }}
+        run: |
+          curl --fail --show-error --silent \
+            -X POST "${DOKPLOY_BASE_URL}/api/application.deploy" \
+            -H "accept: application/json" \
+            -H "Content-Type: application/json" \
+            -H "x-api-key: ${DOKPLOY_API_KEY}" \
+            -d "{\"applicationId\":\"${APP_ID}\"}"

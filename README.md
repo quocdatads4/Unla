@@ -126,6 +126,26 @@ To let the release workflow redeploy Dokploy after a version tag:
 - `DOKPLOY_API_KEY`
 - `DOKPLOY_APPLICATION_ID`
 
+### Manual Dokploy redeploy
+
+This fork now includes a manual workflow:
+
+- `.github/workflows/redeploy-dokploy.yml`
+
+Use it when:
+
+- you want to redeploy the current `stable` image without creating a new tag
+- GHCR already contains the correct image, but Dokploy just needs a fresh deploy
+- you want to redeploy a different Dokploy app by passing `application_id` manually in the workflow form
+
+The workflow reads:
+
+- `DOKPLOY_BASE_URL`
+- `DOKPLOY_API_KEY`
+- `DOKPLOY_APPLICATION_ID`
+
+If `application_id` is left empty in the UI, it falls back to `DOKPLOY_APPLICATION_ID`.
+
 ---
 
 ## 🚀 Core Features
