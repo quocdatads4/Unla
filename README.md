@@ -128,7 +128,7 @@ To let the release workflow redeploy Dokploy after a version tag:
 
 ### Manual Dokploy redeploy
 
-This fork now includes a manual workflow:
+This fork includes a manual workflow:
 
 - `.github/workflows/redeploy-dokploy.yml`
 
@@ -145,6 +145,33 @@ The workflow reads:
 - `DOKPLOY_APPLICATION_ID`
 
 If `application_id` is left empty in the UI, it falls back to `DOKPLOY_APPLICATION_ID`.
+
+### Manual Swiftwave image update
+
+This fork now includes a manual workflow for Swiftwave:
+
+- `.github/workflows/update-swiftwave-image.yml`
+
+Use it when:
+
+- Swiftwave already has a valid `imageRegistryCredential`
+- you want to switch the app to `stable`, a version tag, or another explicit image
+- you want to remove an old registry credential after the image becomes public
+
+The workflow reads:
+
+- `SWIFTWAVE_BASE_URL`
+- `SWIFTWAVE_API_TOKEN`
+- `SWIFTWAVE_APPLICATION_ID`
+
+The workflow inputs let you:
+
+- choose `docker_image`
+- optionally override `application_id`
+- optionally pass `registry_credential_id`
+- optionally set `clear_registry_credential=true`
+
+If Swiftwave does not yet have a GHCR credential, create it once with `sw.exe` first, then use the workflow for later image switches.
 
 ---
 

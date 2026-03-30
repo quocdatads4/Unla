@@ -27,6 +27,17 @@ Use the fork image instead of the upstream public image:
 - A GitHub personal access token classic with at least `read:packages`
 - The token owner must have access to the private GHCR package
 
+## Two operating modes
+
+There are now two practical ways to update Swiftwave:
+
+1. Local CLI mode with `sw.exe`
+2. GitHub Actions mode with `.github/workflows/update-swiftwave-image.yml`
+
+Use local CLI mode the first time you need to create a new registry credential.
+
+Use GitHub Actions mode after Swiftwave already has a valid `imageRegistryCredential` and you only want to switch image tags or redeploy to another image.
+
 ## Create the PAT environment variable
 
 PowerShell:
@@ -75,7 +86,7 @@ ID   | Username    | URL
 
 Use the returned `ID` in the next step. Do not assume it is always `3`.
 
-## Update the app image
+## Update the app image with local CLI
 
 ```powershell
 .\sw.exe app update-image 7072d1f8-f828-42d5-a6ef-cf264f380503 ghcr.io/quocdatads4/unla/allinone:stable --registry-credential-id <id>
@@ -86,6 +97,36 @@ Example:
 ```powershell
 .\sw.exe app update-image 7072d1f8-f828-42d5-a6ef-cf264f380503 ghcr.io/quocdatads4/unla/allinone:stable --registry-credential-id 3
 ```
+
+## Update the app image with GitHub Actions
+
+Workflow file:
+
+- `.github/workflows/update-swiftwave-image.yml`
+
+Required repository secrets:
+
+- `SWIFTWAVE_BASE_URL`
+- `SWIFTWAVE_API_TOKEN`
+- `SWIFTWAVE_APPLICATION_ID`
+
+Recommended values for this environment:
+
+- `SWIFTWAVE_BASE_URL=https://swift.datmarketing.edu.vn`
+- `SWIFTWAVE_APPLICATION_ID=7072d1f8-f828-42d5-a6ef-cf264f380503`
+
+How to use the workflow:
+
+1. Open `Actions` in the `Unla` fork.
+2. Run `Cập nhật image trên Swiftwave`.
+3. Set `docker_image`, for example `ghcr.io/quocdatads4/unla/allinone:stable`.
+4. If the image is private and Swiftwave already has a GHCR credential, fill `registry_credential_id` with that existing ID.
+5. If the image is public and you want to remove the old credential, set `clear_registry_credential=true`.
+
+Important limitation:
+
+- this workflow does not create a new registry credential
+- if Swiftwave does not yet have a GHCR credential, create it once with `sw.exe` first
 
 ## Verify the deployment
 

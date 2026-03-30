@@ -79,7 +79,6 @@ jobs:
           echo "CLEAR_REGISTRY_CREDENTIAL=${INPUT_CLEAR_REGISTRY_CREDENTIAL}" >> "${GITHUB_ENV}"
 
       - name: Lấy trạng thái app hiện tại từ Swiftwave
-        id: fetch
         shell: bash
         env:
           SWIFTWAVE_BASE_URL: ${{ secrets.SWIFTWAVE_BASE_URL }}
@@ -88,14 +87,230 @@ jobs:
         run: |
           set -euo pipefail
 
-          query='query($id: String!) { application(id: $id) { id name environmentVariables { key value } persistentVolumeBindings { persistentVolumeID mountingPath } configMounts { content mountingPath uid gid } capabilities sysctls resourceLimit { memoryMb } reservedResource { memoryMb } deploymentMode replicas command hostname applicationGroupID preferredServerHostnames dockerProxyConfig { enabled permission { ping version info events auth secrets build commit configs containers distribution exec grpc images networks nodes plugins services session swarm system tasks volumes } } customHealthCheck { enabled test_command interval_seconds timeout_seconds start_period_seconds start_interval_seconds retries } deployments { id status createdAt upstreamType gitCredentialID repositoryUrl repositoryBranch codePath sourceCodeCompressedFileName dockerImage imageRegistryCredentialID dockerfile buildArgs { key value } } } }'
+          cat > query.graphql <<'EOF'
+          query($id: String!) {
+            application(id: $id) {
+              id
+              name
+              environmentVariables { key value }
+              persistentVolumeBindings { persistentVolumeID mountingPath }
+              configMounts { content mountingPath uid gid }
+              capabilities
+              sysctls
+              resourceLimit { memoryMb }
+              reservedResource { memoryMb }
+              deploymentMode
+              replicas
+              command
+              hostname
+              applicationGroupID
+              preferredServerHostnames
+              dockerProxyConfig {
+                enabled
+                permission {
+                  ping
+                  version
+                  info
+                  events
+                  auth
+                  secrets
+                  build
+                  commit
+                  configs
+                  containers
+                  distribution
+                  exec
+                  grpc
+                  images
+                  networks
+                  nodes
+                  plugins
+                  services
+                  session
+                  swarm
+                  system
+                  tasks
+                  volumes
+                }
+              }
+              customHealthCheck {
+                enabled
+                test_command
+                interval_seconds
+                timeout_seconds
+                start_period_seconds
+                start_interval_seconds
+                retries
+              }
+              deployments {
+                id
+                status
+                createdAt
+                upstreamType
+                gitCredentialID
+                repositoryUrl
+                repositoryBranch
+                codePath
+                sourceCodeCompressedFileName
+                dockerImage
+                imageRegistryCredentialID
+                dockerfile
+                buildArgs { key value }
+              }
+            }
+          }
+          EOF
 
-          payload=$(jq -n --arg query "$query" --arg id "$APP_ID" '{query: $query, variables: {id: $id}}')
+          payload=$(jq -n --rawfile query query.graphql --arg id "$APP_ID" '{query: $query, variables: {id: $id}}')
 
-          response=$(curl --fail --show-error --silent \
+          curl --fail --show-error --silent \
             -X POST "${SWIFTWAVE_BASE_URL%/}/graphql" \
             -H "Authorization: Bearer ${SWIFTWAVE_API_TOKEN}" \
             -H "Content-Type: application/json" \
-            -d "$payload")
+            -d "$payload" > response.json
 
-          if [[ "$(echo "$response" | jq '.errors | length > 0')
+          if [[ "$(jq '(.errors // []) | length' response.json)" != "0" ]]; then
+            echo "GraphQL lỗi khi lấy application:" >&2
+            jq '.errors' response.json >&2
+            exit 1
+          fi
+
+          jq -e '.data.application' response.json > app.json
+          jq -e '.data.application.deployments[0]' response.json > latest.json
+
+      - name: Cập nhật image trên Swiftwave
+        shell: bash
+        env:
+          SWIFTWAVE_BASE_URL: ${{ secrets.SWIFTWAVE_BASE_URL }}
+          SWIFTWAVE_API_TOKEN: ${{ secrets.SWIFTWAVE_API_TOKEN }}
+          APP_ID: ${{ env.APP_ID }}
+          DOCKER_IMAGE: ${{ env.DOCKER_IMAGE }}
+          REGISTRY_CREDENTIAL_ID: ${{ env.REGISTRY_CREDENTIAL_ID }}
+          CLEAR_REGISTRY_CREDENTIAL: ${{ env.CLEAR_REGISTRY_CREDENTIAL }}
+        run: |
+          set -euo pipefail
+
+          jq -n \
+            --arg image "$DOCKER_IMAGE" \
+            --arg registry "$REGISTRY_CREDENTIAL_ID" \
+            --arg clear "$CLEAR_REGISTRY_CREDENTIAL" \
+            --slurpfile app app.json \
+            --slurpfile latest latest.json \
+            '
+            ($app[0]) as $app |
+            ($latest[0]) as $latest |
+            {
+              name: $app.name,
+              environmentVariables: ($app.environmentVariables // []),
+              persistentVolumeBindings: ($app.persistentVolumeBindings // []),
+              configMounts: ($app.configMounts // []),
+              capabilities: ($app.capabilities // []),
+              sysctls: ($app.sysctls // []),
+              dockerfile: "",
+              buildArgs: [],
+              deploymentMode: $app.deploymentMode,
+              replicas: $app.replicas,
+              resourceLimit: $app.resourceLimit,
+              reservedResource: $app.reservedResource,
+              upstreamType: "image",
+              command: ($app.command // ""),
+              hostname: ($app.hostname // ""),
+              applicationGroupID: ($app.applicationGroupID // null),
+              preferredServerHostnames: ($app.preferredServerHostnames // []),
+              dockerProxyConfig: $app.dockerProxyConfig,
+              customHealthCheck: $app.customHealthCheck,
+              gitCredentialID: null,
+              repositoryUrl: "",
+              repositoryBranch: "",
+              codePath: "",
+              sourceCodeCompressedFileName: "",
+              dockerImage: $image,
+              imageRegistryCredentialID: (
+                if $clear == "true" then null
+                elif ($registry | length) > 0 then ($registry | tonumber)
+                else ($latest.imageRegistryCredentialID // null)
+                end
+              )
+            }
+            ' > input.json
+
+          cat > mutation.graphql <<'EOF'
+          mutation($id: String!, $input: ApplicationInput!) {
+            updateApplication(id: $id, input: $input) {
+              id
+              name
+            }
+          }
+          EOF
+
+          payload=$(jq -n --rawfile query mutation.graphql --arg id "$APP_ID" --slurpfile input input.json '{query: $query, variables: {id: $id, input: $input[0]}}')
+
+          curl --fail --show-error --silent \
+            -X POST "${SWIFTWAVE_BASE_URL%/}/graphql" \
+            -H "Authorization: Bearer ${SWIFTWAVE_API_TOKEN}" \
+            -H "Content-Type: application/json" \
+            -d "$payload" > update-response.json
+
+          if [[ "$(jq '(.errors // []) | length' update-response.json)" != "0" ]]; then
+            echo "GraphQL lỗi khi cập nhật application:" >&2
+            jq '.errors' update-response.json >&2
+            exit 1
+          fi
+
+      - name: Kiểm tra deployment mới nhất
+        shell: bash
+        env:
+          SWIFTWAVE_BASE_URL: ${{ secrets.SWIFTWAVE_BASE_URL }}
+          SWIFTWAVE_API_TOKEN: ${{ secrets.SWIFTWAVE_API_TOKEN }}
+          APP_ID: ${{ env.APP_ID }}
+          DOCKER_IMAGE: ${{ env.DOCKER_IMAGE }}
+        run: |
+          set -euo pipefail
+          sleep 3
+
+          cat > deployments.graphql <<'EOF'
+          query($id: String!) {
+            application(id: $id) {
+              deployments {
+                id
+                status
+                createdAt
+                upstreamType
+                dockerImage
+              }
+            }
+          }
+          EOF
+
+          payload=$(jq -n --rawfile query deployments.graphql --arg id "$APP_ID" '{query: $query, variables: {id: $id}}')
+
+          curl --fail --show-error --silent \
+            -X POST "${SWIFTWAVE_BASE_URL%/}/graphql" \
+            -H "Authorization: Bearer ${SWIFTWAVE_API_TOKEN}" \
+            -H "Content-Type: application/json" \
+            -d "$payload" > deployments-response.json
+
+          if [[ "$(jq '(.errors // []) | length' deployments-response.json)" != "0" ]]; then
+            echo "GraphQL lỗi khi lấy deployments:" >&2
+            jq '.errors' deployments-response.json >&2
+            exit 1
+          fi
+
+          latest_id=$(jq -r '.data.application.deployments[0].id // empty' deployments-response.json)
+          latest_status=$(jq -r '.data.application.deployments[0].status // empty' deployments-response.json)
+          latest_image=$(jq -r '.data.application.deployments[0].dockerImage // empty' deployments-response.json)
+
+          {
+            echo "## Swiftwave update result"
+            echo ""
+            echo "- Application ID: \
+`${APP_ID}`"
+            echo "- Requested image: \
+`${DOCKER_IMAGE}`"
+            echo "- Latest deployment ID: \
+`${latest_id}`"
+            echo "- Latest deployment status: \
+`${latest_status}`"
+            echo "- Latest deployment image: \
+`${latest_image}`"
+          } >> "$GITHUB_STEP_SUMMARY"
