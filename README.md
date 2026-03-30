@@ -99,6 +99,35 @@ You can test the service using:
 
 ---
 
+## 🚢 Fork Release Workflow
+
+This fork publishes its own container images to GHCR:
+
+- `ghcr.io/quocdatads4/unla/allinone:edge` on every push to `main`
+- `ghcr.io/quocdatads4/unla/allinone:sha-<commit>` on every push to `main`
+- `ghcr.io/quocdatads4/unla/allinone:vX.Y.Z` when pushing a version tag
+- `ghcr.io/quocdatads4/unla/allinone:stable` when pushing a version tag
+
+Recommended production flow:
+
+1. Push changes to `main`.
+2. Verify `edge` or `sha-<commit>` if needed.
+3. Create a tag like `v1.2.3`.
+4. Let GitHub Actions publish `v1.2.3` and move `stable`.
+5. Redeploy Dokploy or Swiftwave using `stable` or a fixed version tag.
+
+For the fork-specific Swiftwave private GHCR workflow, see [docs/SWIFTWAVE-GHCR-PRIVATE.md](docs/SWIFTWAVE-GHCR-PRIVATE.md).
+
+### Required GitHub Actions secrets
+
+To let the release workflow redeploy Dokploy after a version tag:
+
+- `DOKPLOY_BASE_URL`
+- `DOKPLOY_API_KEY`
+- `DOKPLOY_APPLICATION_ID`
+
+---
+
 ## 🚀 Core Features
 
 ### 🔌 Protocol & Proxy Capabilities
