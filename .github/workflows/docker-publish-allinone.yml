@@ -1,4 +1,4 @@
-name: Build and Deploy Allinone
+name: Build va trien khai Allinone
 
 on:
   push:
@@ -20,20 +20,20 @@ jobs:
       packages: write
 
     steps:
-      - name: Checkout
+      - name: Lay ma nguon
         uses: actions/checkout@v5
 
-      - name: Set up Docker Buildx
+      - name: Khoi tao Docker Buildx
         uses: docker/setup-buildx-action@v3
 
-      - name: Log in to GHCR
+      - name: Dang nhap GHCR
         uses: docker/login-action@v3
         with:
           registry: ${{ env.REGISTRY }}
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Compute tags
+      - name: Tinh toan tag image
         id: vars
         shell: bash
         run: |
@@ -54,7 +54,7 @@ jobs:
             echo "EOF"
           } >> "${GITHUB_OUTPUT}"
 
-      - name: Build and push allinone image
+      - name: Build va day image allinone
         uses: docker/build-push-action@v6
         with:
           context: .
@@ -74,7 +74,7 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Validate Dokploy secrets
+      - name: Kiem tra secrets Dokploy
         shell: bash
         env:
           DOKPLOY_BASE_URL: ${{ secrets.DOKPLOY_BASE_URL }}
@@ -84,7 +84,7 @@ jobs:
           missing=0
           for name in DOKPLOY_BASE_URL DOKPLOY_API_KEY DOKPLOY_APPLICATION_ID; do
             if [[ -z "${!name}" ]]; then
-              echo "Missing required secret: ${name}" >&2
+              echo "Thieu secret bat buoc: ${name}" >&2
               missing=1
             fi
           done
@@ -92,7 +92,7 @@ jobs:
             exit 1
           fi
 
-      - name: Trigger Dokploy deployment
+      - name: Goi Dokploy redeploy production
         env:
           DOKPLOY_BASE_URL: ${{ secrets.DOKPLOY_BASE_URL }}
           DOKPLOY_API_KEY: ${{ secrets.DOKPLOY_API_KEY }}
