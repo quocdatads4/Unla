@@ -215,7 +215,7 @@ jobs:
               upstreamType: "image",
               command: ($app.command // ""),
               hostname: ($app.hostname // ""),
-              applicationGroupID: ($app.applicationGroupID // null),
+              applicationGroupID: (if (($app.applicationGroupID // "") == "") then null else $app.applicationGroupID end),
               preferredServerHostnames: ($app.preferredServerHostnames // []),
               dockerProxyConfig: $app.dockerProxyConfig,
               customHealthCheck: $app.customHealthCheck,
