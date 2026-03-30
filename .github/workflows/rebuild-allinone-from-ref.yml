@@ -95,32 +95,18 @@ jobs:
           INPUT_PUBLISH_STABLE: ${{ github.event.inputs.publish_stable }}
           SHORT_SHA: ${{ steps.vars.outputs.short_sha }}
         run: |
+          VERSION_TAG_DISPLAY="${INPUT_VERSION_TAG:-<khong-publish-tag-version>}"
           {
             echo "## Rebuild allinone result"
             echo ""
             echo "- Git ref: \
-
-default`
-${INPUT_GIT_REF}
-`"
+`${INPUT_GIT_REF}`"
             echo "- Short SHA: \
-
-default`
-${SHORT_SHA}
-`"
+`${SHORT_SHA}`"
             echo "- Version tag: \
-
-default`
-${INPUT_VERSION_TAG:-<không publish tag version>}
-`"
+`${VERSION_TAG_DISPLAY}`"
             echo "- Publish stable: \
-
-default`
-${INPUT_PUBLISH_STABLE}
-`"
+`${INPUT_PUBLISH_STABLE}`"
             echo "- Image: \
-
-default`
-${IMAGE_NAME}
-`"
+`${IMAGE_NAME}`"
           } >> "$GITHUB_STEP_SUMMARY"
