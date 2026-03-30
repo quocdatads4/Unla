@@ -1,4 +1,4 @@
-name: Build va trien khai Allinone
+name: Build và triển khai Allinone
 
 on:
   push:
@@ -14,26 +14,27 @@ env:
 
 jobs:
   build-and-push:
+    name: Build và đẩy image lên GHCR
     runs-on: ubuntu-latest
     permissions:
       contents: read
       packages: write
 
     steps:
-      - name: Lay ma nguon
+      - name: Lấy mã nguồn
         uses: actions/checkout@v5
 
-      - name: Khoi tao Docker Buildx
+      - name: Khởi tạo Docker Buildx
         uses: docker/setup-buildx-action@v3
 
-      - name: Dang nhap GHCR
+      - name: Đăng nhập GHCR
         uses: docker/login-action@v3
         with:
           registry: ${{ env.REGISTRY }}
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Tinh toan tag image
+      - name: Tính toán tag image
         id: vars
         shell: bash
         run: |
@@ -54,7 +55,7 @@ jobs:
             echo "EOF"
           } >> "${GITHUB_OUTPUT}"
 
-      - name: Build va day image allinone
+      - name: Build và đẩy image allinone
         uses: docker/build-push-action@v6
         with:
           context: .
@@ -69,12 +70,13 @@ jobs:
             org.opencontainers.image.revision=${{ github.sha }}
 
   deploy-prod:
+    name: Redeploy production trên Dokploy
     needs: build-and-push
     if: startsWith(github.ref, 'refs/tags/v')
     runs-on: ubuntu-latest
 
     steps:
-      - name: Kiem tra secrets Dokploy
+      - name: Kiểm tra secrets Dokploy
         shell: bash
         env:
           DOKPLOY_BASE_URL: ${{ secrets.DOKPLOY_BASE_URL }}
@@ -84,7 +86,7 @@ jobs:
           missing=0
           for name in DOKPLOY_BASE_URL DOKPLOY_API_KEY DOKPLOY_APPLICATION_ID; do
             if [[ -z "${!name}" ]]; then
-              echo "Thieu secret bat buoc: ${name}" >&2
+              echo "Thiếu secret bắt buộc: ${name}" >&2
               missing=1
             fi
           done
@@ -92,7 +94,7 @@ jobs:
             exit 1
           fi
 
-      - name: Goi Dokploy redeploy production
+      - name: Gọi Dokploy redeploy production
         env:
           DOKPLOY_BASE_URL: ${{ secrets.DOKPLOY_BASE_URL }}
           DOKPLOY_API_KEY: ${{ secrets.DOKPLOY_API_KEY }}
