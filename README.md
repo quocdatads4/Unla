@@ -116,6 +116,18 @@ Recommended production flow:
 4. Let GitHub Actions publish `v1.2.3` and move `stable`.
 5. Redeploy Dokploy or Swiftwave using `stable` or a fixed version tag.
 
+If the current `stable` artifact is suspect, rebuild it manually from a known-good ref with:
+
+- `.github/workflows/rebuild-allinone-from-ref.yml`
+
+Example safe use case:
+
+- `git_ref = v0.9.2`
+- `version_tag = v0.9.2-dat1`
+- `publish_stable = true`
+
+This is the safest way to refresh `stable` from a ref you already trust before switching production back to the fork image.
+
 For the fork-specific Swiftwave private GHCR workflow, see [docs/SWIFTWAVE-GHCR-PRIVATE.md](docs/SWIFTWAVE-GHCR-PRIVATE.md).
 
 ### Required GitHub Actions secrets
