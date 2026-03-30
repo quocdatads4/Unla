@@ -1,0 +1,101 @@
+name: Cập nhật image trên Swiftwave
+
+on:
+  workflow_dispatch:
+    inputs:
+      docker_image:
+        description: "Docker image cần gán cho app trên Swiftwave"
+        required: true
+        default: "ghcr.io/quocdatads4/unla/allinone:stable"
+        type: string
+      application_id:
+        description: "Application ID trên Swiftwave, để trống để dùng secret SWIFTWAVE_APPLICATION_ID"
+        required: false
+        type: string
+      registry_credential_id:
+        description: "Image registry credential ID cho GHCR private, để trống để giữ nguyên credential hiện tại"
+        required: false
+        type: string
+      clear_registry_credential:
+        description: "Xóa image registry credential hiện tại khi image đã public"
+        required: false
+        default: false
+        type: boolean
+
+jobs:
+  update-image:
+    name: Đổi image và kích hoạt deployment mới
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Kiểm tra đầu vào và secrets
+        shell: bash
+        env:
+          SWIFTWAVE_BASE_URL: ${{ secrets.SWIFTWAVE_BASE_URL }}
+          SWIFTWAVE_API_TOKEN: ${{ secrets.SWIFTWAVE_API_TOKEN }}
+          SWIFTWAVE_APPLICATION_ID: ${{ secrets.SWIFTWAVE_APPLICATION_ID }}
+          INPUT_APPLICATION_ID: ${{ github.event.inputs.application_id }}
+          INPUT_DOCKER_IMAGE: ${{ github.event.inputs.docker_image }}
+          INPUT_REGISTRY_CREDENTIAL_ID: ${{ github.event.inputs.registry_credential_id }}
+          INPUT_CLEAR_REGISTRY_CREDENTIAL: ${{ github.event.inputs.clear_registry_credential }}
+        run: |
+          set -euo pipefail
+
+          missing=0
+          for name in SWIFTWAVE_BASE_URL SWIFTWAVE_API_TOKEN; do
+            if [[ -z "${!name}" ]]; then
+              echo "Thiếu secret bắt buộc: ${name}" >&2
+              missing=1
+            fi
+          done
+
+          APP_ID="${INPUT_APPLICATION_ID}"
+          if [[ -z "${APP_ID}" ]]; then
+            APP_ID="${SWIFTWAVE_APPLICATION_ID}"
+          fi
+
+          if [[ -z "${APP_ID}" ]]; then
+            echo "Thiếu application ID. Hãy nhập input application_id hoặc cấu hình secret SWIFTWAVE_APPLICATION_ID" >&2
+            missing=1
+          fi
+
+          if [[ -z "${INPUT_DOCKER_IMAGE}" ]]; then
+            echo "Thiếu docker_image" >&2
+            missing=1
+          fi
+
+          if [[ "${INPUT_CLEAR_REGISTRY_CREDENTIAL}" == "true" && -n "${INPUT_REGISTRY_CREDENTIAL_ID}" ]]; then
+            echo "Không thể vừa xóa credential vừa gán registry_credential_id mới" >&2
+            missing=1
+          fi
+
+          if [[ "${missing}" -ne 0 ]]; then
+            exit 1
+          fi
+
+          echo "APP_ID=${APP_ID}" >> "${GITHUB_ENV}"
+          echo "DOCKER_IMAGE=${INPUT_DOCKER_IMAGE}" >> "${GITHUB_ENV}"
+          echo "REGISTRY_CREDENTIAL_ID=${INPUT_REGISTRY_CREDENTIAL_ID}" >> "${GITHUB_ENV}"
+          echo "CLEAR_REGISTRY_CREDENTIAL=${INPUT_CLEAR_REGISTRY_CREDENTIAL}" >> "${GITHUB_ENV}"
+
+      - name: Lấy trạng thái app hiện tại từ Swiftwave
+        id: fetch
+        shell: bash
+        env:
+          SWIFTWAVE_BASE_URL: ${{ secrets.SWIFTWAVE_BASE_URL }}
+          SWIFTWAVE_API_TOKEN: ${{ secrets.SWIFTWAVE_API_TOKEN }}
+          APP_ID: ${{ env.APP_ID }}
+        run: |
+          set -euo pipefail
+
+          query='query($id: String!) { application(id: $id) { id name environmentVariables { key value } persistentVolumeBindings { persistentVolumeID mountingPath } configMounts { content mountingPath uid gid } capabilities sysctls resourceLimit { memoryMb } reservedResource { memoryMb } deploymentMode replicas command hostname applicationGroupID preferredServerHostnames dockerProxyConfig { enabled permission { ping version info events auth secrets build commit configs containers distribution exec grpc images networks nodes plugins services session swarm system tasks volumes } } customHealthCheck { enabled test_command interval_seconds timeout_seconds start_period_seconds start_interval_seconds retries } deployments { id status createdAt upstreamType gitCredentialID repositoryUrl repositoryBranch codePath sourceCodeCompressedFileName dockerImage imageRegistryCredentialID dockerfile buildArgs { key value } } } }'
+
+          payload=$(jq -n --arg query "$query" --arg id "$APP_ID" '{query: $query, variables: {id: $id}}')
+
+          response=$(curl --fail --show-error --silent \
+            -X POST "${SWIFTWAVE_BASE_URL%/}/graphql" \
+            -H "Authorization: Bearer ${SWIFTWAVE_API_TOKEN}" \
+            -H "Content-Type: application/json" \
+            -d "$payload")
+
+          if [[ "$(echo "$response" | jq '.errors | length > 0')
